@@ -82,10 +82,29 @@ float ofMap(float value, float inputMin, float inputMax, float outputMin, float 
 
 }
 
-unsigned int getPositionInGrid(float val, float gridStep) {
+
+// 0     0.175-0.275       0.45   0.55
+// 000000xxxxxxxxxxx1111111xxxxxxx22222222xxxxxxxxxx333333333 
+// lS    LE
+// 
+
+unsigned int getPositionInGrid(float val, float gridStep, float gridGap) {
 	gridStep += 0.01; // NOTE: so that if there are 4 steps e.g. doesn't return 5 possible values but 4 instead as expected
-	const unsigned int ret = floor(val / gridStep);
-	return ret + 1; // NOTE: so that indices are not 0-based but instead 1-based
+	const unsigned int ret = floor(val / (gridStep / 2));
+	return ret + 1;
+}
+
+int getPositionInGridGap(float val, float gridStep, float gridGap) {
+	gridStep += 0.01; // NOTE: so that if there are 4 steps e.g. doesn't return 5 possible values but 4 instead as expected
+	// const unsigned int ret = floor(val / (gridStep / 2));
+	for (int i = 0; i < gridStep; i++) {
+		const float limStart = i * gridStep + gridGap * i;
+		const float limEnd = limStart + gridStep;
+		if (val >= limStart && val < limEnd) {
+			return i + 1; // NOTE: so that indices are not 0-based but instead 1-based
+		}
+	}
+	return -1; // NOTE: return in grid gap area
 }
 
 enum ColorMode
@@ -188,6 +207,8 @@ public:
 				{ 'z', 4 }, // profundidade (7000)
 			};
 
+			const float gridGap = 50; // in mm -> (5cm)
+
 			// NOTE: values in milimeters
 			std::map<string, float> captureArea = {
 				{ "xMin", -1000.0 },
@@ -198,9 +219,29 @@ public:
 				{ "zMax",  4000.0 },
 			};
 
-			const float xGridStep = 1.0 / float(gridSize['x']);
+			// values without grid gap
+			/*const float xGridStep = 1.0 / float(gridSize['x']);
 			const float yGridStep = 1.0 / float(gridSize['y']);
-			const float zGridStep = 1.0 / float(gridSize['z']);
+			const float zGridStep = 1.0 / float(gridSize['z']);*/
+
+			// values with grid gap
+			const float xDelta = captureArea["xMax"] - captureArea["xMin"];
+			const float yDelta = captureArea["yMax"] - captureArea["yMin"];
+			const float zDelta = captureArea["zMax"] - captureArea["zMin"];
+
+			const float xNormGap = gridGap / xDelta;
+			const float yNormGap = gridGap / yDelta;
+			const float zNormGap = gridGap / zDelta;
+			
+			// grid step with no gap
+			/*const float xGridStep = 1.0 / float(gridSize['x']);
+			const float yGridStep = 1.0 / float(gridSize['y']);
+			const float zGridStep = 1.0 / float(gridSize['z']);*/
+
+			// grid step with gap
+			const float xGridStep = (1 - (gridSize['x'] - 1) * xNormGap) / (gridSize['x']);
+			const float yGridStep = (1 - (gridSize['y'] - 1) * xNormGap) / (gridSize['y']);
+			const float zGridStep = (1 - (gridSize['z'] - 1) * xNormGap) / (gridSize['z']);
 
 			std::set<std::string> activeGridPositions;
 
@@ -236,9 +277,9 @@ public:
 				const float normY = ofMap(float(dataPoint->y), captureArea["yMin"], captureArea["yMax"], 0.0, 1.0, false);
 				const float normZ = ofMap(float(dataPoint->z), captureArea["zMin"], captureArea["zMax"], 0.0, 1.0, false);
 
-				const unsigned int xGrid = getPositionInGrid(normX, xGridStep);
-				const unsigned int yGrid = getPositionInGrid(normY, yGridStep);
-				const unsigned int zGrid = getPositionInGrid(normZ, zGridStep);
+				const unsigned int xGrid = getPositionInGridGap(normX, xGridStep, xGridStep);
+				const unsigned int yGrid = getPositionInGridGap(normY, yGridStep, yGridStep);
+				const unsigned int zGrid = getPositionInGridGap(normZ, zGridStep, zGridStep);
 
 				std::string gridPosition = "";
 				
@@ -596,10 +637,16 @@ int main(int argc, char** argv)
 
     // Open socket
 	socket123.open(ip::udp::v4());
-	remote_endpoint = ip::udp::endpoint(ip::address::from_string("127.0.0.1"), 9000);
+	remote_endpoint = ip::udp::endpoint(ip::address::from_string("169.254.6.109"), 9000);
+	//remote_endpoint = ip::udp::endpoint(ip::address::from_string("169.254.6.109"), 9000);
+
+	const float gridSize = 4;
+	const float gridGap = 0.1; // 10%
+	 
+	cout << getPositionInGridGap(0.4, 1 / gridSize, gridGap) << endl;
 	
-	// system("pause");
-	// return 0;
+	system("pause");
+	return 0;
 	
 	astra::initialize();
 
