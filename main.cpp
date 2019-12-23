@@ -263,7 +263,7 @@ public:
 			std::ostringstream oss;
 			for (it = activeGridPositions.begin(); it != activeGridPositions.end(); ++it) {
 				//std::cout << ' ' << *it;
-				oss << *it;
+				oss << *it << " ";
 			}
 			std::cout << oss.str() << '\n';
 
