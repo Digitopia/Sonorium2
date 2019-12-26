@@ -43,12 +43,7 @@ float mouseWorldZ_{ 0 };
 bool isPaused_{ false };
 bool isMouseOverlayEnabled_{ true };
 
-// #include <boost/lambda/lambda.hpp>
-// #include <iterator>
-// #include <algorithm>
-// #include <string>
 #include <boost/thread/thread.hpp>
-
 
 using namespace std;
 using namespace boost::asio;
@@ -57,6 +52,29 @@ io_service ios123;
 ip::udp::socket socket123(ios123);
 ip::udp::endpoint remote_endpoint;
 boost::system::error_code err;
+
+// Variáveis Configuração
+
+string SEND_IP = "127.0.0.1";
+int SEND_PORT = 9000;
+
+std::map<char, int> GRID_SIZE = {
+	{ 'x', 4 }, // distancia lateral em relação ao centro e.g. [-2000, 2000]
+	{ 'y', 1 }, // altura em relação ao centro e.g. [-2000, 2000]
+	{ 'z', 4 }, // profundidade e.g. [0, 7000]
+};
+
+const float GRID_GAP = 500; // in mm
+
+// milimeters
+std::map<string, float> CAPTURE_AREA = {
+	{ "xMin", -1000.0 },
+	{ "xMax",  1000.0 },
+	{ "yMin", -1000.0 },
+	{ "yMax",  1000.0 },
+	{ "zMin",  2000.0 },
+	{ "zMax",  4000.0 },
+};
 
 float ofMap(float value, float inputMin, float inputMax, float outputMin, float outputMax, bool clamp) {
 
@@ -83,23 +101,19 @@ float ofMap(float value, float inputMin, float inputMax, float outputMin, float 
 }
 
 
-// 0     0.175-0.275       0.45   0.55
-// 000000xxxxxxxxxxx1111111xxxxxxx22222222xxxxxxxxxx333333333 
-// lS    LE
-// 
-
 unsigned int getPositionInGrid(float val, float gridStep, float gridGap) {
 	gridStep += 0.01; // NOTE: so that if there are 4 steps e.g. doesn't return 5 possible values but 4 instead as expected
 	const unsigned int ret = floor(val / (gridStep / 2));
 	return ret + 1;
 }
 
-int getPositionInGridGap(float val, float gridStep, float gridGap) {
+int getPositionInGridGap(float val, float gridStep, unsigned int gridSize, float gridGap) {
 	gridStep += 0.01; // NOTE: so that if there are 4 steps e.g. doesn't return 5 possible values but 4 instead as expected
 	// const unsigned int ret = floor(val / (gridStep / 2));
-	for (int i = 0; i < gridStep; i++) {
+	for (int i = 0; i < gridSize; i++) {
 		const float limStart = i * gridStep + gridGap * i;
 		const float limEnd = limStart + gridStep;
+		//cout << "limStart " << limStart << " limEnd" << limEnd << " ";
 		if (val >= limStart && val < limEnd) {
 			return i + 1; // NOTE: so that indices are not 0-based but instead 1-based
 		}
@@ -199,39 +213,23 @@ public:
 
 			const astra::Vector3f* data = pointFrame.data();
 
-			//std::cout << data->z << endl;
-
-			std::map<char, int> gridSize = {
-				{ 'x', 4 }, // distancia lateral (-3000, 3000)
-				{ 'y', 1 }, // altura (-3000, 3000)
-				{ 'z', 4 }, // profundidade (7000)
-			};
-
-			const float gridGap = 50; // in mm -> (5cm)
-
-			// NOTE: values in milimeters
-			std::map<string, float> captureArea = {
-				{ "xMin", -1000.0 },
-				{ "xMax",  1000.0 },
-				{ "yMin", -1000.0 },
-				{ "yMax",  1000.0 },
-				{ "zMin",  2000.0 },
-				{ "zMax",  4000.0 },
-			};
-
 			// values without grid gap
 			/*const float xGridStep = 1.0 / float(gridSize['x']);
 			const float yGridStep = 1.0 / float(gridSize['y']);
 			const float zGridStep = 1.0 / float(gridSize['z']);*/
 
 			// values with grid gap
-			const float xDelta = captureArea["xMax"] - captureArea["xMin"];
-			const float yDelta = captureArea["yMax"] - captureArea["yMin"];
-			const float zDelta = captureArea["zMax"] - captureArea["zMin"];
+			const float xDelta = CAPTURE_AREA["xMax"] - CAPTURE_AREA["xMin"];
+			const float yDelta = CAPTURE_AREA["yMax"] - CAPTURE_AREA["yMin"];
+			const float zDelta = CAPTURE_AREA["zMax"] - CAPTURE_AREA["zMin"];
 
-			const float xNormGap = gridGap / xDelta;
-			const float yNormGap = gridGap / yDelta;
-			const float zNormGap = gridGap / zDelta;
+			//cout << "deltas: " << xDelta << " " << yDelta << " " << zDelta << endl;
+
+			const float xNormGap = GRID_GAP / xDelta;
+			const float yNormGap = GRID_GAP / yDelta;
+			const float zNormGap = GRID_GAP / zDelta;
+
+			//cout << "normGaps: " << xNormGap << " " << yNormGap << " " << zNormGap << endl;
 			
 			// grid step with no gap
 			/*const float xGridStep = 1.0 / float(gridSize['x']);
@@ -239,11 +237,25 @@ public:
 			const float zGridStep = 1.0 / float(gridSize['z']);*/
 
 			// grid step with gap
-			const float xGridStep = (1 - (gridSize['x'] - 1) * xNormGap) / (gridSize['x']);
-			const float yGridStep = (1 - (gridSize['y'] - 1) * xNormGap) / (gridSize['y']);
-			const float zGridStep = (1 - (gridSize['z'] - 1) * xNormGap) / (gridSize['z']);
+			const float xGridStep = (1 - (GRID_SIZE['x'] - 1) * xNormGap) / (GRID_SIZE['x']);
+			const float yGridStep = (1 - (GRID_SIZE['y'] - 1) * xNormGap) / (GRID_SIZE['y']);
+			const float zGridStep = (1 - (GRID_SIZE['z'] - 1) * xNormGap) / (GRID_SIZE['z']);
+			
+			//cout << "gridSteps: " << xGridStep << " " << yGridStep << " " << zGridStep << endl;
 
 			std::set<std::string> activeGridPositions;
+			std::map<std::string, int> activeGridCounts;
+
+			// Init map of point counts with zeros
+			for (int x = 1; x <= GRID_SIZE['x']; x++) {
+				for (int y = 1; y <= GRID_SIZE['y']; y++) {
+					for (int z = 1; z <= GRID_SIZE['z']; z++) {
+						std::ostringstream key;
+						key << x << " " << y << " " << z;
+						activeGridCounts.insert(pair<string, int>(key.str(), 0));
+					}
+				}
+			}
 
 			for (int i = 0; i < pointFrame.length(); i++)
 			{
@@ -251,71 +263,79 @@ public:
 				const astra::Vector3f* dataPoint = data + i;
 
 				// Crop x
-				if (dataPoint->x < captureArea["xMin"] || dataPoint->x > captureArea["xMax"]) {
+				if (dataPoint->x < CAPTURE_AREA["xMin"] || dataPoint->x > CAPTURE_AREA["xMax"]) {
 					//std::cout << "ignoring point because not in capture area (height)" << std::endl;
 					continue;
 				}
 
 				// Crop y
-				if (dataPoint->y < captureArea["yMin"] || dataPoint->y > captureArea["yMax"]) {
+				if (dataPoint->y < CAPTURE_AREA["yMin"] || dataPoint->y > CAPTURE_AREA["yMax"]) {
 					//std::cout << "ignoring point because not in capture area (height)" << std::endl;
 					continue;
 				}
 
 				// Crop z
-				if (dataPoint->z < captureArea["zMin"] || dataPoint->z > captureArea["zMax"]) {
+				if (dataPoint->z < CAPTURE_AREA["zMin"] || dataPoint->z > CAPTURE_AREA["zMax"]) {
 				//if (dataPoint->z < 2000 || dataPoint->z > 4000) {
 					//std::cout << "ignoring point because not in capture area (depth)" << std::endl;
 					continue;
 				}
 
-				// Normalize vector
-				// const astra::Vector3f dataNorm = astra::Vector3f::normalize(*dataPoint);
+				// Normalization
+				const float normX = ofMap(float(dataPoint->x), CAPTURE_AREA["xMin"], CAPTURE_AREA["xMax"], 0.0, 1.0, false);
+				const float normY = ofMap(float(dataPoint->y), CAPTURE_AREA["yMin"], CAPTURE_AREA["yMax"], 0.0, 1.0, false);
+				const float normZ = ofMap(float(dataPoint->z), CAPTURE_AREA["zMin"], CAPTURE_AREA["zMax"], 0.0, 1.0, false);
 
-				// Proper normalization
-				const float normX = ofMap(float(dataPoint->x), captureArea["xMin"], captureArea["xMax"], 0.0, 1.0, false);
-				const float normY = ofMap(float(dataPoint->y), captureArea["yMin"], captureArea["yMax"], 0.0, 1.0, false);
-				const float normZ = ofMap(float(dataPoint->z), captureArea["zMin"], captureArea["zMax"], 0.0, 1.0, false);
+				//cout << "norms " << normX << " " << normY << " " << normZ << endl;
 
-				const unsigned int xGrid = getPositionInGridGap(normX, xGridStep, xGridStep);
-				const unsigned int yGrid = getPositionInGridGap(normY, yGridStep, yGridStep);
-				const unsigned int zGrid = getPositionInGridGap(normZ, zGridStep, zGridStep);
+				const int xGrid = getPositionInGridGap(normX, xGridStep, GRID_SIZE['x'], xNormGap);
+				const int yGrid = getPositionInGridGap(normY, yGridStep, GRID_SIZE['y'], yNormGap);
+				const int zGrid = getPositionInGridGap(normZ, zGridStep, GRID_SIZE['z'], zNormGap);
+
+				if (xGrid == -1 || yGrid == -1 || zGrid == -1) {
+					//cout << "ignore position since in gap" << endl;
+					continue;
+				}
 
 				std::string gridPosition = "";
+
+				//cout << "positions: " << xGrid << " " << yGrid << " " << zGrid << endl;
 				
 				// with (x, y, z)
-				// gridPosition = gridPosition + "[" + std::to_string(xGrid) + " " + std::to_string(yGrid) + " " + std::to_string(zGrid) + "]";
+				gridPosition = gridPosition + std::to_string(xGrid) + " " + std::to_string(yGrid) + " " + std::to_string(zGrid);
 				
 				// with (x, z)
 				//gridPosition = gridPosition + "[" + std::to_string(xGrid) + " " + std::to_string(zGrid) + "]";
-				gridPosition = gridPosition + std::to_string(xGrid) + " " + std::to_string(zGrid);
-
+				//gridPosition = gridPosition + std::to_string(xGrid) + " " + std::to_string(zGrid);
+								
 				activeGridPositions.insert(gridPosition);
-
+				
+				activeGridCounts[gridPosition]++;
+				
 			}
 
-			// TODO:
-			// [ ] threshold (count de pontos por grid cell
-			// [ ] grid gap
-			// [X] enviar por UDP
-
 			// Print all active positions for frame
-			std::set<std::string>::iterator it;
-			std::ostringstream oss;
+			set<string>::iterator it;
+			ostringstream oss;
 			for (it = activeGridPositions.begin(); it != activeGridPositions.end(); ++it) {
 				//std::cout << ' ' << *it;
 				oss << *it << " ";
 			}
 			std::cout << oss.str() << '\n';
 
-			string frameString;
-			try {
-				frameString = oss.str();
+			map<string, int>::iterator it2;
+			ostringstream oss2;
+			ostringstream frameStringStream;
+			// Build message to send via OSC
+			for (it2 = activeGridCounts.begin(); it2 != activeGridCounts.end(); ++it2) {
+				//std::cout << ' ' << *it;
+				oss2 << it2->first << " " << it2->second << endl;
+				frameStringStream << it2->second << " ";
 			}
-			catch (...) {
-				frameString = "";
-			}
-			cout << frameString << endl;
+			cout << oss2.str() << '\n';
+			cout << "mensagem a enviar: " << frameStringStream.str() << endl;
+
+			const string frameString = frameStringStream.str();
 			socket123.send_to(buffer(frameString, frameString.length()), remote_endpoint, 0, err);
 			//socket123.close();
 
@@ -637,16 +657,23 @@ int main(int argc, char** argv)
 
     // Open socket
 	socket123.open(ip::udp::v4());
-	remote_endpoint = ip::udp::endpoint(ip::address::from_string("169.254.6.109"), 9000);
+	remote_endpoint = ip::udp::endpoint(ip::address::from_string(SEND_IP), SEND_PORT);
 	//remote_endpoint = ip::udp::endpoint(ip::address::from_string("169.254.6.109"), 9000);
 
-	const float gridSize = 4;
-	const float gridGap = 0.1; // 10%
-	 
-	cout << getPositionInGridGap(0.4, 1 / gridSize, gridGap) << endl;
+	// TEST: getPositionInGridGap
+	//const unsigned int gridSize = 4;
+	//const float gridGap = 0.05; // 5%
+	//const float gridStep = (1 - (gridSize - 1) * gridGap) / gridSize;
+	//cout << (0.0, gridStep, gridSize, gridGap) << endl; // 1
+	//cout << getPositionInGridGap(0.2, gridStep, gridSize, gridGap) << endl; // 1
+	//cout << getPositionInGridGap(0.25, gridStep, gridSize, gridGap) << endl; // -1 (gap)
+	//cout << getPositionInGridGap(0.26, gridStep, gridSize, gridGap) << endl; // -1 (gap)
+	//cout << getPositionInGridGap(0.3, gridStep, gridSize, gridGap) << endl; // 2
+	//cout << getPositionInGridGap(0.9, gridStep, gridSize, gridGap) << endl; // 4
+	//cout << getPositionInGridGap(1, gridStep, gridSize, gridGap) << endl; // 4
 	
-	system("pause");
-	return 0;
+	/*system("pause");
+	return 0;*/
 	
 	astra::initialize();
 
