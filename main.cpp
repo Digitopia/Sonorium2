@@ -64,14 +64,14 @@ std::map<char, int> GRID_SIZE = {
 	{ 'z', 4 }, // profundidade e.g. [0, 7000]
 };
 
-const float GRID_GAP = 500; // in mm
+const float GRID_GAP = 300; // in mm
 
 // milimeters
 std::map<string, float> CAPTURE_AREA = {
-	{ "xMin", -1000.0 },
-	{ "xMax",  1000.0 },
-	{ "yMin", -1000.0 },
-	{ "yMax",  1000.0 },
+	{ "xMin", -1200.0 },
+	{ "xMax",  1200.0 },
+	{ "yMin", -1200.0 },
+	{ "yMax",  1200.0 },
 	{ "zMin",  2000.0 },
 	{ "zMax",  4000.0 },
 };
@@ -264,7 +264,7 @@ public:
 
 				// Crop x
 				if (dataPoint->x < CAPTURE_AREA["xMin"] || dataPoint->x > CAPTURE_AREA["xMax"]) {
-					//std::cout << "ignoring point because not in capture area (height)" << std::endl;
+					//std::cout << "ignoring point because not in capture area (width)" << std::endl;
 					continue;
 				}
 
@@ -276,7 +276,7 @@ public:
 
 				// Crop z
 				if (dataPoint->z < CAPTURE_AREA["zMin"] || dataPoint->z > CAPTURE_AREA["zMax"]) {
-				//if (dataPoint->z < 2000 || dataPoint->z > 4000) {
+				
 					//std::cout << "ignoring point because not in capture area (depth)" << std::endl;
 					continue;
 				}
