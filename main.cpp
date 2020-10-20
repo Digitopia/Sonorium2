@@ -18,7 +18,6 @@
 
 #include "boost/asio.hpp"
 
-
 #include <astra_core/astra_core.hpp>
 #include <astra/astra.hpp>
 #include "LitDepthVisualizer.hpp"
@@ -31,6 +30,9 @@
 
 #include <boost/chrono.hpp>
 #include <boost/thread/thread.hpp> 
+#include <boost/array.hpp>
+#include <boost/asio.hpp>
+#include <boost/bind.hpp>
 
 #include <map>
 #include <set>
@@ -49,22 +51,28 @@ using namespace std;
 using namespace boost::asio;
 
 io_service ios123;
+io_service ios_receive;
 ip::udp::socket socket123(ios123);
 ip::udp::endpoint remote_endpoint;
 boost::system::error_code err;
+
+// receive
+ip::udp::socket socket_receive{ios_receive};
+ip::udp::endpoint receive_endpoint;
+boost::system::error_code receive_err;
+boost::array<char, 1024> recv_buf;
 
 // Variáveis Configuração
 
 string SEND_IP = "127.0.0.1";
 int SEND_PORT = 9000;
+int RECEIVE_PORT = 9005;
 
 std::map<char, int> GRID_SIZE = {
 	{ 'x', 4 }, // distancia lateral em relação ao centro e.g. [-2000, 2000]
 	{ 'y', 1 }, // altura em relação ao centro e.g. [-2000, 2000]
 	{ 'z', 4 }, // profundidade e.g. [0, 7000]
 };
-
-const float GRID_GAP = 300; // in mm
 
 // milimeters
 std::map<string, float> CAPTURE_AREA = {
@@ -74,6 +82,104 @@ std::map<string, float> CAPTURE_AREA = {
 	{ "yMax",  1200.0 },
 	{ "zMin",  2000.0 },
 	{ "zMax",  4000.0 },
+};
+
+float GRID_GAP = 300; // in mm
+
+void handler_osc_receive(
+	const boost::system::error_code& error, // Result of operation.
+	std::size_t bytes_transferred           // Number of bytes received.
+);
+
+void handler_osc_receive(const boost::system::error_code & error, std::size_t bytes_transferred)
+{
+	std::cout << "receive something!";
+}
+
+vector<string> split(const string& str, const string& delim)
+{
+	vector<string> tokens;
+	size_t prev = 0, pos = 0;
+	do
+	{
+		pos = str.find(delim, prev);
+		if (pos == string::npos) pos = str.length();
+		string token = str.substr(prev, pos - prev);
+		if (!token.empty()) tokens.push_back(token);
+		prev = pos + delim.length();
+	} while (pos < str.length() && prev < str.length());
+	return tokens;
+}
+
+struct Client {
+    
+	boost::asio::io_service io_service;
+    ip::udp::socket socket{io_service};
+    boost::array<char, 2048> recv_buffer;
+    ip::udp::endpoint remote_endpoint;
+
+    void handle_receive(const boost::system::error_code& error, size_t bytes_transferred) {
+        if (error) {
+            std::cout << "Receive failed: " << error.message() << "\n";
+            return;
+        }
+		std::string received = string(recv_buffer.begin(), recv_buffer.begin() + bytes_transferred);
+        std::cout << "Received: '" << received << "' (" << error.message() << ")\n";
+		
+		// std::string delimiter = " ";
+		// std::string cmd = received.substr(0, received.find(delimiter));
+
+		vector<string> tokens = split(received, " ");
+
+		// NOTE: make sure that the buffer doesn't get full so that can keep on receiving messages
+		recv_buffer.assign(0);
+
+		std::string cmd = tokens[0];
+
+		if (cmd == "grid_size") {
+			std::cout << "grid_size" << std::endl;
+			GRID_SIZE['x'] = std::stoi(tokens[1]);
+			GRID_SIZE['y'] = std::stoi(tokens[2]);
+			GRID_SIZE['z'] = std::stoi(tokens[3]);
+		}
+		else if (cmd == "grid_gap") {
+			std::cout << "grid_gap" << std::endl;
+			GRID_GAP = std::stoi(tokens[1]);
+		}
+		else if (cmd == "capture_area") {
+			std::cout << "capture_area" << std::endl;
+			CAPTURE_AREA["xMin"] = std::stoi(tokens[1]);
+			CAPTURE_AREA["xMax"] = std::stoi(tokens[2]);
+			CAPTURE_AREA["yMin"] = std::stoi(tokens[3]);
+			CAPTURE_AREA["yMax"] = std::stoi(tokens[4]);
+			CAPTURE_AREA["zMin"] = std::stoi(tokens[5]);
+			CAPTURE_AREA["zMax"] = std::stoi(tokens[6]);
+		}
+		else {
+			std::cout << "Comand nao suportado... Utilizar grid_size, grid_gap ou capture_area" << std::endl;
+		}
+
+        wait();
+        
+    }
+
+    void wait() {
+        socket.async_receive_from(boost::asio::buffer(recv_buffer),
+            remote_endpoint,
+            boost::bind(&Client::handle_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+    }
+
+    void Receiver()
+    {
+        socket.open(ip::udp::v4());
+        socket.bind(ip::udp::endpoint(ip::address::from_string(SEND_IP), RECEIVE_PORT));
+
+        wait();
+
+        std::cout << "Receiving\n";
+        io_service.run();
+        std::cout << "Receiver exit\n";
+    }
 };
 
 float ofMap(float value, float inputMin, float inputMax, float outputMin, float outputMax, bool clamp) {
@@ -321,7 +427,7 @@ public:
 				//std::cout << ' ' << *it;
 				oss << *it << " ";
 			}
-			std::cout << oss.str() << '\n';
+			// std::cout << oss.str() << '\n';
 
 			map<string, int>::iterator it2;
 			ostringstream oss2;
@@ -332,13 +438,12 @@ public:
 				oss2 << it2->first << " " << it2->second << endl;
 				frameStringStream << it2->second << " ";
 			}
-			cout << oss2.str() << '\n';
+			// cout << oss2.str() << '\n';
 			cout << "mensagem a enviar: " << frameStringStream.str() << endl;
 
 			const string frameString = frameStringStream.str();
 			socket123.send_to(buffer(frameString, frameString.length()), remote_endpoint, 0, err);
-			//socket123.close();
-
+			
 		}
 
 		/*const int depthWidth = pointFrame.width();
@@ -655,10 +760,21 @@ int main(int argc, char** argv)
 	/*system("pause");
 	return 0;*/
 
-    // Open socket
+    // send socket
 	socket123.open(ip::udp::v4());
 	remote_endpoint = ip::udp::endpoint(ip::address::from_string(SEND_IP), SEND_PORT);
 	//remote_endpoint = ip::udp::endpoint(ip::address::from_string("169.254.6.109"), 9000);
+
+	// receive socket
+	socket_receive.open(ip::udp::v4());
+	receive_endpoint = ip::udp::endpoint(ip::address::from_string(SEND_IP), RECEIVE_PORT);
+	
+	// istringstream frameStringStream;
+	// string frameString = frameStringStream.str();
+	// socket_receive.async_receive_from(buffer(frameString), 0, receive_endpoint, handler_osc_receive);
+	// socket_receive.bind(ip::udp::endpoint(ip::address::from_string(SEND_IP), RECEIVE_PORT));
+	// socket_receive.async_receive_from(buffer(recv_buf), receive_endpoint, handler_osc_receive);
+	
 
 	// TEST: getPositionInGridGap
 	//const unsigned int gridSize = 4;
@@ -674,6 +790,19 @@ int main(int argc, char** argv)
 	
 	/*system("pause");
 	return 0;*/
+
+	Client client;
+    std::thread r([&] { client.Receiver(); });
+
+    // std::string input = argc>1? argv[1] : "hello world";
+    // std::cout << "Input is '" << input.c_str() << "'\nSending it to Sender Function...\n";
+
+    // for (int i = 0; i < 3; ++i) {
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    //     Sender(input);
+    // }
+
+    // r.join();
 	
 	astra::initialize();
 
