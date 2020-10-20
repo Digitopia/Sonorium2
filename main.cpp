@@ -353,8 +353,21 @@ public:
 			std::map<std::string, int> activeGridCounts;
 
 			// Init map of point counts with zeros
+			/*
 			for (int x = 1; x <= GRID_SIZE['x']; x++) {
 				for (int y = 1; y <= GRID_SIZE['y']; y++) {
+					for (int z = 1; z <= GRID_SIZE['z']; z++) {
+						std::ostringstream key;
+						key << x << " " << y << " " << z;
+						activeGridCounts.insert(pair<string, int>(key.str(), 0));
+					}
+				}
+			}
+			*/
+
+			// NOTE: better order for Filipe
+			for (int y = 1; y <= GRID_SIZE['y']; y++) {
+				for (int x = 1; x <= GRID_SIZE['x']; x++) {
 					for (int z = 1; z <= GRID_SIZE['z']; z++) {
 						std::ostringstream key;
 						key << x << " " << y << " " << z;
@@ -439,7 +452,7 @@ public:
 				frameStringStream << it2->second << " ";
 			}
 			// cout << oss2.str() << '\n';
-			cout << "mensagem a enviar: " << frameStringStream.str() << endl;
+			// cout << "mensagem a enviar: " << frameStringStream.str() << endl;
 
 			const string frameString = frameStringStream.str();
 			socket123.send_to(buffer(frameString, frameString.length()), remote_endpoint, 0, err);
