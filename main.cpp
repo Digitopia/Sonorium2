@@ -344,8 +344,8 @@ public:
 
 			// grid step with gap
 			const float xGridStep = (1 - (GRID_SIZE['x'] - 1) * xNormGap) / (GRID_SIZE['x']);
-			const float yGridStep = (1 - (GRID_SIZE['y'] - 1) * xNormGap) / (GRID_SIZE['y']);
-			const float zGridStep = (1 - (GRID_SIZE['z'] - 1) * xNormGap) / (GRID_SIZE['z']);
+			const float yGridStep = (1 - (GRID_SIZE['y'] - 1) * yNormGap) / (GRID_SIZE['y']);
+			const float zGridStep = (1 - (GRID_SIZE['z'] - 1) * zNormGap) / (GRID_SIZE['z']);
 			
 			//cout << "gridSteps: " << xGridStep << " " << yGridStep << " " << zGridStep << endl;
 
