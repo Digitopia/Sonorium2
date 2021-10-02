@@ -65,6 +65,7 @@ boost::array<char, 1024> recv_buf;
 // Variáveis Configuração
 
 string SEND_IP = "127.0.0.1";
+//string SEND_IP = "192.168.0.111";
 int SEND_PORT = 9000;
 int RECEIVE_PORT = 9005;
 
@@ -75,13 +76,22 @@ std::map<char, int> GRID_SIZE = {
 };
 
 // milimeters
+// std::map<string, float> CAPTURE_AREA = {
+// 	{ "xMin", -1200.0 },
+// 	{ "xMax",  1200.0 },
+// 	{ "yMin", -1200.0 },
+// 	{ "yMax",  1200.0 },
+// 	{ "zMin",  2000.0 },
+// 	{ "zMax",  4000.0 },
+// };
+
 std::map<string, float> CAPTURE_AREA = {
-	{ "xMin", -1200.0 },
-	{ "xMax",  1200.0 },
+	{ "xMin", -2000.0 },
+	{ "xMax",  2000.0 },
 	{ "yMin", -1200.0 },
 	{ "yMax",  1200.0 },
 	{ "zMin",  2000.0 },
-	{ "zMax",  4000.0 },
+	{ "zMax",  6500.0 },
 };
 
 float GRID_GAP = 300; // in mm
@@ -137,31 +147,61 @@ struct Client {
 		std::string cmd = tokens[0];
 
 		if (cmd == "grid_size") {
+			cout << "before" << endl;
+			printGridSize();
 			std::cout << "grid_size" << std::endl;
 			GRID_SIZE['x'] = std::stoi(tokens[1]);
 			GRID_SIZE['y'] = std::stoi(tokens[2]);
 			GRID_SIZE['z'] = std::stoi(tokens[3]);
+			cout << "after" << endl;
+			printGridSize();
 		}
 		else if (cmd == "grid_gap") {
 			std::cout << "grid_gap" << std::endl;
 			GRID_GAP = std::stoi(tokens[1]);
+		
 		}
 		else if (cmd == "capture_area") {
 			std::cout << "capture_area" << std::endl;
-			CAPTURE_AREA["xMin"] = std::stoi(tokens[1]);
-			CAPTURE_AREA["xMax"] = std::stoi(tokens[2]);
-			CAPTURE_AREA["yMin"] = std::stoi(tokens[3]);
-			CAPTURE_AREA["yMax"] = std::stoi(tokens[4]);
-			CAPTURE_AREA["zMin"] = std::stoi(tokens[5]);
-			CAPTURE_AREA["zMax"] = std::stoi(tokens[6]);
+			printCaptureArea();
+			CAPTURE_AREA["xMin"] = float(std::stoi(tokens[1]));
+			CAPTURE_AREA["xMax"] = float(std::stoi(tokens[2]));
+			CAPTURE_AREA["yMin"] = float(std::stoi(tokens[3]));
+			CAPTURE_AREA["yMax"] = float(std::stoi(tokens[4]));
+			CAPTURE_AREA["zMin"] = float(std::stoi(tokens[5]));
+			CAPTURE_AREA["zMax"] = float(std::stoi(tokens[6]));
+			printCaptureArea();
+
 		}
 		else {
 			std::cout << "Comand nao suportado... Utilizar grid_size, grid_gap ou capture_area" << std::endl;
 		}
 
         wait();
-        
+		
     }
+
+	void printCaptureArea() {
+		cout << "CAPTURE_AREA" << endl;
+		cout << "CAPTURE_AREA" << endl;
+		cout << "CAPTURE_AREA" << endl;
+		cout << "CAPTURE_AREA" << endl;
+		cout << "CAPTURE_AREA" << endl;
+		cout << "---------------------------------------------" << endl;
+		cout << "xMin " << CAPTURE_AREA["xMin"] << endl;
+		cout << "xMax " << CAPTURE_AREA["xMax"] << endl;
+		cout << "yMin " << CAPTURE_AREA["yMin"] << endl;
+		cout << "yMax " << CAPTURE_AREA["yMax"] << endl;
+		cout << "zMin " << CAPTURE_AREA["zMin"] << endl;
+		cout << "zMax " << CAPTURE_AREA["zMax"] << endl;
+	}
+
+	void printGridSize() {
+		cout << "grid size X" << GRID_SIZE['x'] << endl;
+		cout << "grid size Y" << GRID_SIZE['y'] << endl;
+		cout << "grid size Z" << GRID_SIZE['z'] << endl;
+	}
+
 
     void wait() {
         socket.async_receive_from(boost::asio::buffer(recv_buffer),
@@ -365,9 +405,9 @@ public:
 			}
 			*/
 
-			// NOTE: better order for Filipe
-			for (int y = 1; y <= GRID_SIZE['y']; y++) {
-				for (int x = 1; x <= GRID_SIZE['x']; x++) {
+			// building keys for dict (e.g. "0 0 0", "0 0 1")
+			for (int x = 1; x <= GRID_SIZE['x']; x++) {
+				for (int y = 1; y <= GRID_SIZE['y']; y++) {
 					for (int z = 1; z <= GRID_SIZE['z']; z++) {
 						std::ostringstream key;
 						key << x << " " << y << " " << z;
@@ -434,25 +474,39 @@ public:
 			}
 
 			// Print all active positions for frame
-			set<string>::iterator it;
-			ostringstream oss;
-			for (it = activeGridPositions.begin(); it != activeGridPositions.end(); ++it) {
-				//std::cout << ' ' << *it;
-				oss << *it << " ";
-			}
+			// set<string>::iterator it;
+			// ostringstream oss;
+			// for (it = activeGridPositions.begin(); it != activeGridPositions.end(); ++it) {
+			// 	oss << *it << " ";
+			// }
 			// std::cout << oss.str() << '\n';
 
+			// NOTE: better order for Filipe (y z x)
+			// (1 1 1  1 1 2  1 1 3  1 1 4  1 2 1)
+			// building keys for dict (e.g. "0 0 0", "0 0 1")
 			map<string, int>::iterator it2;
 			ostringstream oss2;
 			ostringstream frameStringStream;
-			// Build message to send via OSC
-			for (it2 = activeGridCounts.begin(); it2 != activeGridCounts.end(); ++it2) {
-				//std::cout << ' ' << *it;
-				oss2 << it2->first << " " << it2->second << endl;
-				frameStringStream << it2->second << " ";
+			for (int y = 1; y <= GRID_SIZE['y']; y++) {
+				for (int z = 1; z <= GRID_SIZE['z']; z++) {
+					for (int x = 1; x <= GRID_SIZE['x']; x++) {
+						std::ostringstream key;
+						key << x << " " << y << " " << z;
+						int count = activeGridCounts[key.str()];
+						oss2 << key.str() << " " << count << endl;
+						frameStringStream << count << " ";
+					}
+				}
 			}
-			// cout << oss2.str() << '\n';
-			// cout << "mensagem a enviar: " << frameStringStream.str() << endl;
+
+			// Build message to send via OSC
+			// for (it2 = activeGridCounts.begin(); it2 != activeGridCounts.end(); ++it2) {
+			// 	//std::cout << ' ' << *it;
+			// 	oss2 << it2->first << " " << it2->second << endl;
+			// 	frameStringStream << it2->second << " ";
+			// }
+			cout << oss2.str() << '\n';
+			cout << "mensagem a enviar: " << frameStringStream.str() << endl;
 
 			const string frameString = frameStringStream.str();
 			socket123.send_to(buffer(frameString, frameString.length()), remote_endpoint, 0, err);
@@ -496,7 +550,6 @@ public:
 
 		const int colorWidth = colorFrame.width();
 		const int colorHeight = colorFrame.height();
-
 		init_texture(colorWidth, colorHeight, colorView_);
 
 		if (isPaused_) { return; }
